@@ -20,16 +20,16 @@ def main():
 
     rl_agent_type = "Double_Net"
     if rl_agent_type == "Naive":
-        agent = models.DQN(N_F, N_A,\
+        agent = models.NaiveDQN(N_F, N_A,\
                            lr=0.001, gamma=0.6, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1 )
-    elif rl_agent_type == "StoreTransition":
-        agent = models.DQN_StoreTransition(N_F, N_A,\
+    elif rl_agent_type == "ExperienceReplay":
+        agent = models.ExperienceReplayDQN(N_F, N_A,\
                         lr=0.001, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1, capacity=10000, batch_size=128 )
-    elif rl_agent_type == "Double_Net":
-        agent = models.DQN_Double_Net(N_F, N_A,\
+    elif rl_agent_type == "Target_Net":
+        agent = models.TargetNetDQN(N_F, N_A,\
                         lr=0.001, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1, capacity=10000, batch_size=128 )
     else:
-        raise ValueError("rl_agent_type must be Naive, StoreTransition or Double_Net")
+        raise ValueError("rl_agent_type must be Naive, ExperienceReplay or Target_Net")
     if os.path.exists("./DQN/DQN_{}.pth".format(rl_agent_type)):
         agent.load_state_dict(torch.load("./DQN/DQN_{}.pth".format(rl_agent_type), weights_only=False))
         print("agent model loaded")

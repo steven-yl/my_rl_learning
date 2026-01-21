@@ -25,16 +25,16 @@ if __name__ == "__main__":
     N_A = env.action_space.n
     print("N_F: {}, N_A: {}".format(N_F, N_A))
     if rl_agent_type == "Naive":
-        agent = models.DQN(N_F, N_A,\
+        agent = models.NaiveDQN(N_F, N_A,\
                            lr=0.01, gamma=0.9, epsilon=1.0, eps_dec=1e-5, eps_min=1e-1 )
-    elif rl_agent_type == "StoreTransition":
-        agent = models.DQN_StoreTransition(N_F, N_A,\
+    elif rl_agent_type == "ExperienceReplay":
+        agent = models.ExperienceReplayDQN(N_F, N_A,\
                         lr=0.01, gamma=0.9, epsilon=1.0, eps_dec=1e-5, eps_min=1e-1, capacity=20000, batch_size=32 )
-    elif rl_agent_type == "Double_Net":
-        agent = models.DQN_Double_Net(N_F, N_A,\
+    elif rl_agent_type == "Target_Net":
+        agent = models.TargetNetDQN(N_F, N_A,\
                         lr=0.01, gamma=0.9, epsilon=1.0, eps_dec=1e-5, eps_min=1e-1, capacity=20000, batch_size=32 )
     else:
-        raise ValueError("rl_agent_type must be Naive, StoreTransition or Double_Net")
+        raise ValueError("rl_agent_type must be Naive, ExperienceReplay or Target_Net")
     tb_writer.add_graph(agent, torch.randn((1, N_F)))
 
     if USE_PTH and os.path.exists("./DQN/DQN_{}.pth".format(rl_agent_type)):

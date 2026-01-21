@@ -19,7 +19,7 @@ class Net(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         return self.net(state) 
 
-class DQN(nn.Module):
+class NaiveDQN(nn.Module):
     def __init__(self, n_features, n_actions, lr: float, gamma: float, epsilon: float, eps_dec: float, eps_min: float) -> None:
         super().__init__()
         self.n_features = n_features
@@ -75,7 +75,7 @@ class DQN(nn.Module):
         self.epsilon = self.epsilon - self.eps_dec \
             if self.epsilon > self.eps_min else self.eps_min
 
-class DQN_StoreTransition(DQN):
+class ExperienceReplayDQN(NaiveDQN):
     def __init__(self, n_features: int, n_actions: int, lr: float, gamma: float,\
                 epsilon: float, eps_dec: float, eps_min: float, capacity: int = 2000, batch_size: int = 32) -> None:
         super().__init__(n_features, n_actions, lr, gamma, epsilon, eps_dec, eps_min)
@@ -103,10 +103,82 @@ class DQN_StoreTransition(DQN):
         reward = torch.stack(reward)
         next_state = torch.stack(next_state)
         return state, action, reward, next_state
-    
 
 
-class DQN_Double_Net(DQN_StoreTransition):
+class Memory:
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def store(self, state:torch.Tensor, action:torch.Tensor, reward:torch.Tensor, next_state:torch.Tensor) -> None:
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = (state, action, reward, next_state)
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size: int) -> tuple:
+        transitions = np.random.choice(len(self.memory), min(batch_size, len(self.memory)))
+        state, action, reward, next_state = zip(*[self.memory[i] for i in transitions])
+        state = torch.stack(state)
+        action = torch.stack(action)
+        reward = torch.stack(reward)
+        next_state = torch.stack(next_state)
+        return state, action, reward, next_state
+
+    def update_priorities(self, indices: np.ndarray, priorities: np.ndarray) -> None:
+        for i, priority in zip(indices, priorities):
+            self.memory[i][2] = priority
+class PrioritizedExperienceReplayDQN(NaiveDQN):
+    def __init__(self, n_features: int, n_actions: int, lr: float, gamma: float,\
+                epsilon: float, eps_dec: float, eps_min: float, capacity: int = 2000,\
+                batch_size: int = 32, prioritized: bool = True) -> None:
+        super().__init__(n_features, n_actions, lr, gamma, epsilon, eps_dec, eps_min)
+        self.capacity = capacity
+        self.batch_size = batch_size
+        self.prioritized = prioritized
+        if self.prioritized:
+            self.memory = Memory(capacity)
+        else:
+            self.memory = []
+            self.position = 0
+
+    def store_transition(self, state:torch.Tensor, action:torch.Tensor, reward:torch.Tensor, next_state:torch.Tensor) -> None:
+        if self.prioritized:
+            self.memory.store(state, action, reward, next_state)
+        else:
+            if len(self.memory) < self.capacity:
+                self.memory.append(None)
+            self.memory[self.position] = (state, action, reward, next_state)
+            self.position = (self.position + 1) % self.capacity
+
+    def sample_transition(self) -> tuple:
+        if self.prioritized:
+            return self.memory.sample(self.batch_size)
+        else:
+            transitions = np.random.choice(len(self.memory), min(self.batch_size, len(self.memory)))
+            state, action, reward, next_state = zip(*[self.memory[i] for i in transitions])
+            state = torch.stack(state)
+            action = torch.stack(action)
+            reward = torch.stack(reward)
+            next_state = torch.stack(next_state)
+            return state, action, reward, next_state
+
+    def update_priorities(self, indices: np.ndarray, priorities: np.ndarray) -> None:
+        if self.prioritized:
+            self.memory.update_priorities(indices, priorities)
+
+    def learn(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor) -> float:
+
+        states, actions, rewards, next_states = self.sample_transition()
+        states = states.to(self.device)
+        actions = actions.to(self.device)
+        rewards = rewards.to(self.device)
+        next_states = next_states.to(self.device)
+        loss = super().learn(states, actions, rewards, next_states)
+        return loss.item()
+
+class TargetNetDQN(ExperienceReplayDQN):
     def __init__(self, n_features: int, n_actions: int, lr: float, gamma: float,\
                 epsilon: float, eps_dec: float, eps_min: float, capacity: int = 2000,\
                 batch_size: int = 32, target_replace_freq: int = 100) -> None:
@@ -140,3 +212,4 @@ class DQN_Double_Net(DQN_StoreTransition):
         self.decrement_epsilon()
 
         return loss.item()
+

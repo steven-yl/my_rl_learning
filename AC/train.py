@@ -35,7 +35,7 @@ def main():
         s, info = env.reset(seed=1)
         t = 0
         episode_reward = 0
-        while True:
+        while True:   # s, a, r, s_
             a = actor.choose_action(s)
             s_, r, terminated, truncated, info = env.step(a)
             done = terminated
