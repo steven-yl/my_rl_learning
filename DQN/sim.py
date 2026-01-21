@@ -12,26 +12,36 @@ def generate_env(env_name: str, render_mode=None):
 
 def main():
     MAX_EPISODES = 3000
-    LR_A = 0.001
     env_property = generate_env("LunarLander-v3", render_mode="human")
     env = env_property["env"]
     N_F = env_property["N_F"]
     N_A = env_property["N_A"]
 
-    rl_agent_type = "Double_Net"
+    # 修复models中可用的agent类型: Naive、ExperienceReplay、Target_Net
+    rl_agent_type = "ExperienceReplay"
     if rl_agent_type == "Naive":
-        agent = models.NaiveDQN(N_F, N_A,\
-                           lr=0.001, gamma=0.6, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1 )
+        agent = models.NaiveDQN(
+            N_F, N_A,
+            lr=0.01, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=0.0
+        )
     elif rl_agent_type == "ExperienceReplay":
-        agent = models.ExperienceReplayDQN(N_F, N_A,\
-                        lr=0.001, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1, capacity=10000, batch_size=128 )
+        agent = models.ExperienceReplayDQN(
+            N_F, N_A,
+            lr=0.01, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=0.0,
+            capacity=20000, batch_size=32
+        )
     elif rl_agent_type == "Target_Net":
-        agent = models.TargetNetDQN(N_F, N_A,\
-                        lr=0.001, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=1e-1, capacity=10000, batch_size=128 )
+        agent = models.TargetNetDQN(
+            N_F, N_A,
+            lr=0.01, gamma=0.9, epsilon=0.0, eps_dec=1e-5, eps_min=0.0,
+            capacity=20000, batch_size=32
+        )
     else:
         raise ValueError("rl_agent_type must be Naive, ExperienceReplay or Target_Net")
-    if os.path.exists("./DQN/DQN_{}.pth".format(rl_agent_type)):
-        agent.load_state_dict(torch.load("./DQN/DQN_{}.pth".format(rl_agent_type), weights_only=False))
+    # 加载权重
+    pth_path = "./DQN/DQN_{}.pth".format(rl_agent_type)
+    if os.path.exists(pth_path):
+        agent.load_state_dict(torch.load(pth_path, weights_only=False))
         print("agent model loaded")
     agent.eval()
     for i_episode in range(MAX_EPISODES):
