@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 print("Save DQN_{}_{}.pth successfully at episode {}".format(rl_agent_type, i, i))
         tb_writer.add_scalar("DQN_{}/i_episode".format(rl_agent_type), i, i)
         tb_writer.add_scalar("DQN_{}/score".format(rl_agent_type), score, i)
-        tb_writer.add_scalar("DQN_{}/loss".format(rl_agent_type), loss_ep/step, i)
+        tb_writer.add_scalar("DQN_{}/loss".format(rl_agent_type), loss_ep/step if step > 0 else 0.0, i)
         tb_writer.add_scalar("DQN_{}/agent_epsilon".format(rl_agent_type), agent.epsilon, i)
         tb_writer.add_scalar("DQN_{}/q_pred".format(rl_agent_type), result["q_pred"], i)
         tb_writer.add_scalar("DQN_{}/q_target".format(rl_agent_type), result["q_target"], i)

