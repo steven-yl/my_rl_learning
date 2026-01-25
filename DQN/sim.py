@@ -12,13 +12,16 @@ def generate_env(env_name: str, render_mode=None):
 
 def main():
     MAX_EPISODES = 3000
-    env_property = generate_env("LunarLander-v3", render_mode="human")
+    output_dir = "./runs/DQN_Target_Net/CartPole-v1/20260125_105744/"
+    pth_name = "DQN_Target_Net.pth"
+    env_name = "CartPole-v1"
+    env_property = generate_env(env_name, render_mode="human")
     env = env_property["env"]
     N_F = env_property["N_F"]
     N_A = env_property["N_A"]
 
     # 修复models中可用的agent类型: Naive、ExperienceReplay、Target_Net
-    rl_agent_type = "ExperienceReplay"
+    rl_agent_type = "Target_Net"
     if rl_agent_type == "Naive":
         agent = models.NaiveDQN(
             N_F, N_A,
@@ -39,7 +42,7 @@ def main():
     else:
         raise ValueError("rl_agent_type must be Naive, ExperienceReplay or Target_Net")
     # 加载权重
-    pth_path = "./DQN/DQN_{}.pth".format(rl_agent_type)
+    pth_path = os.path.join(output_dir, pth_name)
     if os.path.exists(pth_path):
         agent.load_state_dict(torch.load(pth_path, weights_only=False))
         print("agent model loaded")

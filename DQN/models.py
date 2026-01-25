@@ -189,8 +189,11 @@ class TargetNetDQN(ExperienceReplayDQN):
         self.learn_step_counter = 0
 
     def learn(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor) -> float:
+        is_update_target_net = False
         if self.learn_step_counter == 0 or self.learn_step_counter % self.target_replace_freq == 0:
             self.target_net.load_state_dict(self.eval_net.state_dict())
+            print("target net updated")
+            is_update_target_net = True
         self.learn_step_counter += 1
         self.store_transition(state, action, reward, next_state)
         states, actions, rewards, next_states = self.sample_transition()
@@ -207,9 +210,15 @@ class TargetNetDQN(ExperienceReplayDQN):
         q_target = rewards +  self.gamma * q_next.max(dim=-1, keepdim=True)[0]
         loss = self.loss_fn(q_pred, q_target)
 
+        self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()  
         self.decrement_epsilon()
-
-        return loss.item()
+        result = {
+            "loss": loss.item(),
+            "q_pred": q_pred.mean().item(),
+            "q_target": q_target.mean().item(),
+            "is_update_target_net": is_update_target_net,
+        }
+        return result
 
